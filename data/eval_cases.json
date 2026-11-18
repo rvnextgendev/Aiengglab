@@ -1,0 +1,7 @@
+[
+ {"question":"How many paid leave days are provided?","expected_substring":"18 paid leave"},
+ {"question":"What is the return policy?","expected_substring":"14 days"},
+ {"question":"What are standard working hours?","expected_substring":"9 AM to 6 PM"},
+ {"question":"Calculate premium price for 2 items with 10% discount","expected_substring":"8,100.00"},
+ {"question":"What is the moon made of?","expected_substring":"I do not know"}
+]
