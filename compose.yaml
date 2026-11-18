@@ -1,0 +1,10 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      LAB_API_KEY: ${LAB_API_KEY:-}
+    volumes:
+      - ./data/uploads:/code/data/uploads
