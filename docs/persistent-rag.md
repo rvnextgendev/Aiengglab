@@ -32,3 +32,15 @@ The first embedding run downloads the all-MiniLM-L6-v2 model; subsequent runs us
 - No PDF ingestion, multi-user authentication, background ingestion, or database migration framework yet.
 - The /rag/initialize endpoint is for local learning only. Restrict schema management to deployment migrations in production.
 - Never upload confidential data or expose this demo publicly.
+
+## Ollama-grounded answers and Streamlit
+
+- Pull a local model: `ollama pull llama3.2:3b`; ensure Ollama is running.
+- Call POST /rag/answer with `{"question":"How long can I return unused products?","use_llm":true,"limit":3,"min_score":0.35}` and X-API-Key.
+- The server retrieves pgvector chunks, filters by cosine similarity, and passes evidence to the existing Ollama prompt. It returns answer, source chunks, mode, and latency.
+- If no chunks meet the threshold, the API abstains without calling Ollama.
+- Run `streamlit run app/lab_ui.py` and use the Persistent RAG section in the Documents + RAG tab.
+- Run offline unit/API tests: `pytest -q tests/test_persistent_rag.py tests/test_rag_service.py tests/test_rag_api.py`.
+- Database + Ollama end-to-end verification must be performed locally; these automated tests mock external services.
+- The default threshold 0.35 is only a starting point, not a calibrated relevance guarantee.
+- This is not sentence-level verified citation: the model is instructed to cite sources, but citations are not independently validated.
