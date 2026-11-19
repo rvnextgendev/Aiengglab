@@ -1,8 +1,7 @@
-"""Extended learning API. Run: uvicorn app.lab_api:app --reload"""
-import os
-from fastapi import FastAPI, HTTPException, Depends
+"""Authenticated AriNova lab API."""
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from app.advanced import ask_advanced, add_text_document, price_tool
+from app.advanced import price_tool
 from app.evaluation import evaluate
 from app.foundation.settings import get_settings
 from app.foundation.logging import configure_logging, RequestLoggingMiddleware
@@ -10,8 +9,7 @@ from app.foundation.auth import current_principal, require_roles, Principal
 
 settings = get_settings()
 configure_logging(settings.log_level)
-
-app = FastAPI(title='AriNova AI Engineering Lab — 10 Skills')
+app = FastAPI(title="AriNova AI Engineering Lab")
 app.add_middleware(RequestLoggingMiddleware)
 
 class Ask(BaseModel):
@@ -28,44 +26,28 @@ class Price(BaseModel):
     quantity: int = 1
     discount_percent: float = 0
 
-@app.get('/health')
+@app.get("/health")
 def health():
-    return {'status': 'ok', 'mode': 'learning'}
+    return {"status": "ok", "mode": "foundation"}
 
-@app.post('/lab/ask')
-def ask(payload: Ask, principal: Principal = Depends(current_principal)):
-    raise HTTPException(status_code=410, detail='Legacy unscoped chat disabled; use /rag/answer')
-    try:
-        return ask_advanced(payload.question, payload.session_id, payload.use_llm)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail='Model or retrieval unavailable') from exc
+@app.post("/lab/ask", status_code=410)
+def old_chat(payload: Ask, principal: Principal = Depends(current_principal)):
+    raise HTTPException(status_code=410, detail="Legacy unscoped chat disabled; use /rag/answer")
 
-@app.post('/lab/documents')
-def upload(payload: Document, x_api_key: str | None = Header(default=None)):
-    require_key(x_api_key)
-    raise HTTPException(status_code=410, detail='Legacy shared document store disabled; use /rag/ingest')
+@app.post("/lab/documents", status_code=410)
+def old_upload(payload: Document, principal: Principal = Depends(require_roles("admin", "editor"))):
+    raise HTTPException(status_code=410, detail="Legacy shared document store disabled; use /rag/ingest")
+
+@app.post("/lab/price")
+def price(payload: Price, principal: Principal = Depends(current_principal)):
     try:
-        return add_text_document(payload.filename, payload.content)
+        return price_tool(payload.product, payload.quantity, payload.discount_percent)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-@app.post('/lab/price')
-def price(payload: Price, x_api_key: str | None = Header(default=None)):
-    require_key(x_api_key)
-    return price_tool(payload.product, payload.quantity, payload.discount_percent)
-
-@app.get('/lab/evaluate')
-def evals(x_api_key: str | None = Header(default=None)):
-    require_key(x_api_key)
+@app.get("/lab/evaluate")
+def evals(principal: Principal = Depends(require_roles("admin"))):
     return evaluate()
 
-# Persistent RAG is optional: install requirements-rag.txt to enable its routes.
-try:
-    from app.rag_api import router as rag_router
-except ModuleNotFoundError as exc:
-    if exc.name not in {"sqlalchemy", "pgvector", "sentence_transformers", "psycopg"}:
-        raise
-else:
-    app.include_router(rag_router)
+from app.rag_api import router as rag_router
+app.include_router(rag_router)
