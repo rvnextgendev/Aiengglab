@@ -1,4 +1,4 @@
-# AriNova AI Engineer Lab
+> **Phase 1 production foundation (feature branch):** The authenticated `app.lab_api` now requires a JWT secret and bearer tokens; unscoped `/lab/ask` and `/lab/documents` return HTTP 410. Run `pip install -r requirements-foundation.txt` and read [docs/production-foundation.md](docs/production-foundation.md) before using this branch. The older quick-start instructions below describe the original learning prototype, not this hardened branch. Do not merge or deploy without testing.\n\n# AriNova AI Engineer Lab
 
 A **runnable Phase 1** of a ten-skill AI engineering learning project. This is a deliberately small, transparent prototype, **not** a production-grade RAG or agent system.
 
