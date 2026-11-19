@@ -5,9 +5,8 @@ import streamlit as st
 
 st.set_page_config(page_title='AriNova AI Engineering Lab', layout='wide')
 st.title('AriNova AI Engineering Lab')
-st.caption('One practical app for Python, LLMs, context, RAG, agents, evals, deployment, security, fine-tuning and product design')
+st.caption('AriNova learning lab — authenticated persistent RAG')
 api = st.sidebar.text_input('API URL', os.getenv('LAB_API_URL', 'http://localhost:8000'))
-key = st.sidebar.text_input('API key (optional)', type='password')
 jwt_token = st.sidebar.text_input('JWT bearer token', type='password')
 headers = {'Authorization': f'Bearer {jwt_token}'} if jwt_token else {}
 use_llm = st.sidebar.checkbox('Use Ollama LLM', False)
@@ -22,7 +21,8 @@ def call(method, path, **kwargs):
 chat, tools, docs, evals, learn = st.tabs(['Chat + Context', 'Agent Tools', 'Documents + RAG', 'Evals + Traces', '10 Skills'])
 with chat:
     question = st.text_input('Ask about AriNova', 'How many paid leave days do employees get?')
-    if st.button('Ask assistant'):
+    st.info('Legacy unscoped chat disabled. Use Persistent RAG below.')
+    if False and st.button('Ask assistant'):
         try:
             data = call('POST', '/lab/ask', json={'question': question, 'session_id': st.session_state.session, 'use_llm': use_llm})
             st.session_state.session = data['session_id']
@@ -40,7 +40,8 @@ with tools:
         except requests.RequestException as exc: st.error(str(exc))
 with docs:
     uploaded = st.file_uploader('Upload a small UTF-8 text document', type=['txt'])
-    if uploaded and st.button('Add document'):
+    st.info('Legacy shared upload disabled. Use Persistent RAG upload below.')
+    if False and uploaded and st.button('Add document'):
         try: st.json(call('POST', '/lab/documents', json={'filename': uploaded.name, 'content': uploaded.getvalue().decode('utf-8')}))
         except (UnicodeDecodeError, requests.RequestException) as exc: st.error(str(exc))
 with docs:
