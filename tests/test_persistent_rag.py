@@ -1,3 +1,6 @@
+import pytest
+pytest.importorskip('sqlalchemy')
+pytest.importorskip('pgvector')
 from app.persistent_rag import split_text
 
 def test_empty_document():
