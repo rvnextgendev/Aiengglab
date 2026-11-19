@@ -8,7 +8,8 @@ st.title('AriNova AI Engineering Lab')
 st.caption('One practical app for Python, LLMs, context, RAG, agents, evals, deployment, security, fine-tuning and product design')
 api = st.sidebar.text_input('API URL', os.getenv('LAB_API_URL', 'http://localhost:8000'))
 key = st.sidebar.text_input('API key (optional)', type='password')
-headers = {'X-API-Key': key} if key else {}
+jwt_token = st.sidebar.text_input('JWT bearer token', type='password')
+headers = {'Authorization': f'Bearer {jwt_token}'} if jwt_token else {}
 use_llm = st.sidebar.checkbox('Use Ollama LLM', False)
 if 'session' not in st.session_state:
     st.session_state.session = None
@@ -45,7 +46,7 @@ with docs:
 with docs:
     st.divider()
     st.subheader('Persistent RAG (PostgreSQL + pgvector)')
-    st.caption('Optional feature. Start PostgreSQL and install requirements-rag.txt first.')
+    st.caption('Requires a signed JWT, migrated PostgreSQL, and requirements-foundation.txt.')
     persistent_upload = st.file_uploader('Persistent RAG TXT document', type=['txt'], key='persistent_upload')
     if persistent_upload and st.button('Save in PostgreSQL'):
         try:
