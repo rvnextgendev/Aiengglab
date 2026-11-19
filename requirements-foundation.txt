@@ -1,0 +1,4 @@
+-r requirements-rag.txt
+pydantic-settings>=2.5,<3
+PyJWT>=2.9,<3
+alembic>=1.13,<2
