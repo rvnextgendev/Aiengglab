@@ -5,7 +5,7 @@ import os
 import re
 from functools import lru_cache
 
-from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, create_engine, delete, select, text
+from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
 from pgvector.sqlalchemy import VECTOR
 
@@ -65,11 +65,6 @@ def split_text(content: str, chunk_size: int = 600, overlap: int = 100) -> list[
             break
         start = end - overlap
     return result
-
-def initialize():
-    with engine().begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-    Base.metadata.create_all(engine())
 
 def ingest(tenant_id: str, filename: str, content: str) -> dict:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", tenant_id):
