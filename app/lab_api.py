@@ -1,11 +1,18 @@
 """Extended learning API. Run: uvicorn app.lab_api:app --reload"""
 import os
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel, Field
 from app.advanced import ask_advanced, add_text_document, price_tool
 from app.evaluation import evaluate
+from app.foundation.settings import get_settings
+from app.foundation.logging import configure_logging, RequestLoggingMiddleware
+from app.foundation.auth import current_principal, require_roles, Principal
+
+settings = get_settings()
+configure_logging(settings.log_level)
 
 app = FastAPI(title='AriNova AI Engineering Lab — 10 Skills')
+app.add_middleware(RequestLoggingMiddleware)
 
 class Ask(BaseModel):
     question: str = Field(min_length=1, max_length=500)
@@ -21,18 +28,13 @@ class Price(BaseModel):
     quantity: int = 1
     discount_percent: float = 0
 
-def require_key(x_api_key: str | None):
-    expected = os.getenv('LAB_API_KEY')
-    if expected and x_api_key != expected:
-        raise HTTPException(status_code=401, detail='Invalid API key')
-
 @app.get('/health')
 def health():
     return {'status': 'ok', 'mode': 'learning'}
 
 @app.post('/lab/ask')
-def ask(payload: Ask, x_api_key: str | None = Header(default=None)):
-    require_key(x_api_key)
+def ask(payload: Ask, principal: Principal = Depends(current_principal)):
+    raise HTTPException(status_code=410, detail='Legacy unscoped chat disabled; use /rag/answer')
     try:
         return ask_advanced(payload.question, payload.session_id, payload.use_llm)
     except ValueError as exc:
@@ -43,6 +45,7 @@ def ask(payload: Ask, x_api_key: str | None = Header(default=None)):
 @app.post('/lab/documents')
 def upload(payload: Document, x_api_key: str | None = Header(default=None)):
     require_key(x_api_key)
+    raise HTTPException(status_code=410, detail='Legacy shared document store disabled; use /rag/ingest')
     try:
         return add_text_document(payload.filename, payload.content)
     except ValueError as exc:
@@ -51,10 +54,7 @@ def upload(payload: Document, x_api_key: str | None = Header(default=None)):
 @app.post('/lab/price')
 def price(payload: Price, x_api_key: str | None = Header(default=None)):
     require_key(x_api_key)
-    try:
-        return price_tool(payload.product, payload.quantity, payload.discount_percent)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return price_tool(payload.product, payload.quantity, payload.discount_percent)
 
 @app.get('/lab/evaluate')
 def evals(x_api_key: str | None = Header(default=None)):
