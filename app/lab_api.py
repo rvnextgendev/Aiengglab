@@ -60,3 +60,12 @@ def price(payload: Price, x_api_key: str | None = Header(default=None)):
 def evals(x_api_key: str | None = Header(default=None)):
     require_key(x_api_key)
     return evaluate()
+
+# Persistent RAG is optional: install requirements-rag.txt to enable its routes.
+try:
+    from app.rag_api import router as rag_router
+except ModuleNotFoundError as exc:
+    if exc.name not in {"sqlalchemy", "pgvector", "sentence_transformers", "psycopg"}:
+        raise
+else:
+    app.include_router(rag_router)

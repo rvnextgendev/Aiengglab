@@ -11,4 +11,5 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
+      - run: pip install 'SQLAlchemy>=2.0,<3' 'pgvector>=0.5,<1' 'httpx>=0.27,<1'
       - run: pytest -q

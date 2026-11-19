@@ -42,6 +42,30 @@ with docs:
     if uploaded and st.button('Add document'):
         try: st.json(call('POST', '/lab/documents', json={'filename': uploaded.name, 'content': uploaded.getvalue().decode('utf-8')}))
         except (UnicodeDecodeError, requests.RequestException) as exc: st.error(str(exc))
+with docs:
+    st.divider()
+    st.subheader('Persistent RAG (PostgreSQL + pgvector)')
+    st.caption('Optional feature. Start PostgreSQL and install requirements-rag.txt first.')
+    persistent_upload = st.file_uploader('Persistent RAG TXT document', type=['txt'], key='persistent_upload')
+    if persistent_upload and st.button('Save in PostgreSQL'):
+        try:
+            st.json(call('POST', '/rag/ingest', json={
+                'filename': persistent_upload.name,
+                'content': persistent_upload.getvalue().decode('utf-8')}))
+        except (UnicodeDecodeError, requests.RequestException) as exc:
+            st.error(str(exc))
+    rag_question = st.text_input('Ask persistent RAG', 'What is the return policy?')
+    rag_llm = st.checkbox('Generate answer with Ollama', value=False, key='rag_llm')
+    min_score = st.slider('Minimum similarity score', 0.0, 1.0, 0.35, 0.05)
+    if st.button('Search PostgreSQL and answer'):
+        try:
+            result = call('POST', '/rag/answer', json={
+                'question': rag_question, 'use_llm': rag_llm, 'min_score': min_score})
+            st.write(result['answer'])
+            st.caption(f"Mode: {result['mode']} | {result['latency_ms']} ms")
+            st.json(result['sources'])
+        except requests.RequestException as exc:
+            st.error(str(exc))
 with evals:
     if st.button('Run evaluation suite'):
         try:
