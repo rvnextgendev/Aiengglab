@@ -9,6 +9,7 @@ from rq.job import Job
 from rq.registry import FailedJobRegistry
 from app.advanced_rag.jobs import connection
 from app.advanced_rag.ingestion import ingest_file
+from app.reliability.replay_lock import reserve
 
 QUEUE = "arinova-ingestion"
 
@@ -35,6 +36,9 @@ def replay(tenant_id, job_id):
             or len(job.args) != 3 or job.args[0] != tenant_id
             or not isinstance(job.args[2], bytes) or len(job.args[2]) > 5 * 1024 * 1024):
         raise LookupError("Failed job not found")
+    # Atomic Redis NX reservation prevents two admins replaying the same failed job.
+    # Retain reservation if enqueue fails: unknown outcome needs manual review.
+    reserve(redis, tenant_id, job_id)
     queue = Queue(QUEUE, connection=redis, default_timeout=600)
     new_job = queue.enqueue(ingest_file, *job.args, job_timeout=600,
                             result_ttl=3600, failure_ttl=86400,
