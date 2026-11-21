@@ -209,7 +209,7 @@ def approve_persistent_workflow(thread_id: str, payload: ApprovalDecision,
                              idempotency_key, recovered)
                     return recovered
                 raise HTTPException(status_code=409, detail="Approval pending reconciliation")
-        result = durable.decide(thread_id, principal, payload.approved)
+        result = durable.decide(thread_id, principal, payload.approved, payload.reason)
         if idempotency_key:
             complete(principal.tenant_id, principal.user_id, "approve:" + thread_id,
                      idempotency_key, result)
