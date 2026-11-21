@@ -49,3 +49,12 @@ def complete(tenant: str, actor: str, operation: str, key: str, result: dict):
     with database() as db:
         db.execute("UPDATE claims SET status='completed', result=? WHERE tenant=? AND actor=? AND operation=? AND key=? AND status='pending'",
                    (json.dumps(result), tenant, actor, operation, key))
+
+def associate(tenant: str, actor: str, operation: str, key: str, result: dict):
+    """Record a durable workflow ID before execution, so crashes can be reconciled."""
+    with database() as db:
+        updated = db.execute(
+            "UPDATE claims SET result=? WHERE tenant=? AND actor=? AND operation=? AND key=? AND status='pending' AND result IS NULL",
+            (json.dumps(result), tenant, actor, operation, key)).rowcount
+        if updated != 1:
+            raise IdempotencyConflict("Claim cannot be associated")
