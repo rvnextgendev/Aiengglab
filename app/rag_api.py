@@ -1,5 +1,5 @@
 """Authenticated, tenant-scoped persistent RAG endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header
 from pydantic import BaseModel, Field
 from app.foundation.auth import Principal, current_principal, require_roles
 from app.persistent_rag import ingest, search
@@ -11,6 +11,7 @@ from app.advanced_rag.extract import MAX_BYTES
 from app.ai_workflows.graph import run_workflow
 from app.ai_workflows import durable
 from app.ai_quality.service import quality_answer
+from app.reliability.idempotency import claim, complete, IdempotencyConflict
 
 router = APIRouter(prefix="/rag", tags=["Persistent RAG"])
 
@@ -139,10 +140,25 @@ class ApprovalDecision(BaseModel):
 
 @router.post("/workflows", status_code=201)
 def start_persistent_workflow(payload: WorkflowRequest,
-                              principal: Principal = Depends(current_principal)):
+                              principal: Principal = Depends(current_principal),
+                              idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
     try:
-        return durable.start(principal, payload.question, payload.provider,
-                             payload.model, payload.use_llm, payload.rerank, payload.limit)
+        if idempotency_key:
+            existing = claim(principal.tenant_id, principal.user_id, "start_workflow",
+                             idempotency_key, payload.model_dump())
+            if not existing["new"]:
+                if existing["status"] == "completed":
+                    return existing["result"]
+                raise HTTPException(status_code=409, detail="Request is already pending; reconcile before retry")
+        result = durable.start(principal, payload.question, payload.provider,
+                               payload.model, payload.use_llm, payload.rerank, payload.limit)
+        if idempotency_key:
+            complete(principal.tenant_id, principal.user_id, "start_workflow", idempotency_key, result)
+        return result
+    except HTTPException:
+        raise
+    except IdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
