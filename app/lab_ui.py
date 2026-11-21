@@ -76,6 +76,45 @@ with docs:
             st.json(result['sources'])
         except requests.RequestException as exc:
             st.error(str(exc))
+with docs:
+    st.divider()
+    st.subheader('Phase 3 — Persistent workflow and human approval')
+    st.caption('LLM requests pause until an editor/admin approves. Use the same tenant JWT.')
+    durable_question = st.text_input('Workflow question', 'What is the return policy?', key='durable_question')
+    durable_provider = st.selectbox('Workflow LLM provider', ['ollama', 'openai-compatible'])
+    durable_use_llm = st.checkbox('Require LLM generation and approval', value=True)
+    if st.button('Start persistent workflow'):
+        try:
+            result = call('POST', '/rag/workflows', json={
+                'question': durable_question, 'provider': durable_provider,
+                'use_llm': durable_use_llm, 'rerank': False, 'limit': 3})
+            st.session_state['durable_thread_id'] = result['thread_id']
+            st.json(result)
+        except requests.RequestException as exc:
+            st.error(str(exc))
+    durable_thread_id = st.text_input('Workflow thread ID',
+        value=st.session_state.get('durable_thread_id', ''), key='durable_thread_input')
+    if durable_thread_id and st.button('Refresh workflow status'):
+        try:
+            st.json(call('GET', '/rag/workflows/' + durable_thread_id))
+        except requests.RequestException as exc:
+            st.error(str(exc))
+    st.caption('Only admin/editor tokens may approve or reject.')
+    col_approve, col_reject = st.columns(2)
+    with col_approve:
+        if durable_thread_id and st.button('Approve LLM generation'):
+            try:
+                st.json(call('POST', '/rag/workflows/' + durable_thread_id + '/approval',
+                             json={'approved': True}))
+            except requests.RequestException as exc:
+                st.error(str(exc))
+    with col_reject:
+        if durable_thread_id and st.button('Reject LLM generation'):
+            try:
+                st.json(call('POST', '/rag/workflows/' + durable_thread_id + '/approval',
+                             json={'approved': False}))
+            except requests.RequestException as exc:
+                st.error(str(exc))
 with evals:
     if st.button('Run evaluation suite'):
         try:
