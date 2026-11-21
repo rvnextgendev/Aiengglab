@@ -22,5 +22,6 @@ def job_status(tenant_id: str, job_id: str) -> dict | None:
     if not job.args or job.args[0] != tenant_id:
         return None
     status = job.get_status(refresh=True)
-    return {"job_id": job.id, "status": str(status),
-            "result": job.result if status == "finished" else None}
+    status_value = getattr(status, "value", str(status))
+    return {"job_id": job.id, "status": status_value,
+            "result": job.result if status_value == "finished" else None}
