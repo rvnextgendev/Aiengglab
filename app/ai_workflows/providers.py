@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import time
 from app.reliability.resilience import retry_call, CircuitBreaker, CircuitOpen
+from app.reliability.deadline import current_deadline, check
+from app.reliability.shared_circuit import SharedCircuitBreaker
 
 _BREAKERS = {"ollama": CircuitBreaker(), "openai-compatible": CircuitBreaker()}
 import httpx
@@ -40,9 +42,13 @@ def generate(question: str, hits: list[dict], provider: str = "ollama",
         payload = {"model": chosen, "messages": messages, "temperature": 0}
         headers = {"Authorization": f"Bearer {api_key}"}
     def request_once():
-        with httpx.Client(timeout=httpx.Timeout(45.0, connect=5.0)) as client:
+        check()
+        context = current_deadline()
+        remaining = context.remaining() if context else 45.0
+        with httpx.Client(timeout=httpx.Timeout(min(45.0, remaining), connect=min(5.0, remaining))) as client:
             response = client.post(url, json=payload, headers=headers)
             response.raise_for_status()
+            check()
             data = response.json()
         content = (data.get("message", {}).get("content", "")
                        if provider == "ollama" else
@@ -57,7 +63,11 @@ def generate(question: str, hits: list[dict], provider: str = "ollama",
                 exc.response.status_code in {429, 502, 503, 504})
 
     try:
+        ctx = current_deadline()
+        breaker = (SharedCircuitBreaker(provider) if os.getenv("SHARED_CIRCUIT_BREAKER", "false").lower() == "true"
+                   else _BREAKERS[provider])
         return retry_call(request_once, retryable=transient, attempts=retries + 1,
-                          deadline_seconds=150, breaker=_BREAKERS[provider])
+                          deadline_seconds=min(150, ctx.remaining()) if ctx else 150,
+                          breaker=breaker)
     except (httpx.HTTPError, CircuitOpen, TimeoutError) as exc:
         raise ProviderError("LLM provider unavailable or circuit open") from exc
