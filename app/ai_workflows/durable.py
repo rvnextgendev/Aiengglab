@@ -161,9 +161,11 @@ def status(thread_id: str, principal) -> dict:
     with open_graph() as graph:
         return view(get_owned_snapshot(graph, thread_id, principal))
 
-def decide(thread_id: str, principal, approved: bool) -> dict:
+def decide(thread_id: str, principal, approved: bool, reason: str = "") -> dict:
     if type(approved) is not bool:
         raise ValueError("approved must be boolean")
+    if len(reason) > 1000:
+        raise ValueError("Reason too long")
     with workflow_lock(thread_id), open_graph() as graph:
         snapshot = get_owned_snapshot(graph, thread_id, principal, reviewer=True)
         if control.is_cancelled(thread_id):
@@ -180,7 +182,7 @@ def decide(thread_id: str, principal, approved: bool) -> dict:
         result = view(graph.get_state(config(thread_id)))
         if os.getenv("WORKFLOW_APPROVAL_STORE", "off") == "postgres":
             from app.ai_workflows import approval_store
-            approval_store.decision(thread_id, principal.tenant_id, principal.user_id, approved)
+            approval_store.decision(thread_id, principal.tenant_id, principal.user_id, approved, reason)
         return result
 
 def cancel(thread_id: str, principal) -> dict:
