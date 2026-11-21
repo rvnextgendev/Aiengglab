@@ -27,4 +27,4 @@ jobs:
       - name: Reliability and workflow tests
         env:
           PYTHONPATH: .
-        run: pytest -q tests/test_reliability.py tests/test_sprint1_failure_injection.py tests/test_sprint1_reconciliation.py tests/test_sprint1_final_controls.py tests/test_durable_workflows.py tests/test_sprint2_graph.py tests/test_sprints234.py tests/test_sprint4_costs.py tests/test_architecture_reference.py
+        run: pytest -q tests/test_reliability.py tests/test_sprint1_failure_injection.py tests/test_sprint1_reconciliation.py tests/test_sprint1_final_controls.py tests/test_durable_workflows.py tests/test_sprint2_graph.py tests/test_sprints234.py tests/test_sprint4_costs.py tests/test_architecture_reference.py tests/test_integrated_architect.py
