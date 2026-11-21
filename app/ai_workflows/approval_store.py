@@ -80,3 +80,13 @@ def history(thread_id, tenant):
             FROM workflow_approval_events WHERE thread_id=:thread AND tenant_id=:tenant
             ORDER BY id"""),dict(thread=thread_id,tenant=tenant)).mappings()
         return [dict(r) for r in rows]
+
+def ensure_pending(thread_id, tenant):
+    """Reject expired or already-decided approvals before resuming LangGraph."""
+    with Session(engine()) as db:
+        setup(db)
+        row = db.execute(text("""SELECT status,expires_at FROM workflow_approvals
+            WHERE thread_id=:thread AND tenant_id=:tenant"""),
+            dict(thread=thread_id,tenant=tenant)).first()
+        if not row or row[0] != "pending" or row[1] <= datetime.now(timezone.utc):
+            raise ValueError("Approval expired or already decided")
