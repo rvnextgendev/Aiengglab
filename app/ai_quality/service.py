@@ -31,7 +31,7 @@ def quality_answer(tenant_id: str, question: str, provider: str = "ollama",
         result = apply_answer_policy(answer, hits)
     else:
         answer = "Relevant evidence: " + " | ".join(
-            f"[{hit['source']}] {hit['text']}" for hit in hits)
+            f"[{hit['source']}] {hit['text']}" for hit in safe_evidence(hits))
         result = apply_answer_policy(answer, hits)
     elapsed = round((time.perf_counter() - started) * 1000, 2)
     if os.getenv("AI_USAGE_METRICS", "off") == "on":
