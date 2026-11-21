@@ -1,0 +1,2 @@
+-r requirements-phase2.txt
+langgraph>=0.2,<2
