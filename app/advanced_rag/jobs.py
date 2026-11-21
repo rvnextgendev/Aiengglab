@@ -1,5 +1,6 @@
 """Redis RQ jobs. Queue payload is limited to 5 MB; protect Redis as sensitive storage."""
 import os
+import hashlib
 from redis import Redis
 from rq import Queue, Retry
 from rq.job import Job
@@ -10,8 +11,12 @@ def connection():
                           socket_connect_timeout=3, socket_timeout=10)
 
 def enqueue_document(tenant_id: str, filename: str, data: bytes) -> str:
-    queue = Queue("arinova-ingestion", connection=connection(), default_timeout=600)
+    redis = connection()
+    queue = Queue("arinova-ingestion", connection=redis, default_timeout=600)
+    digest = hashlib.sha256(tenant_id.encode() + b'\\0' + filename.encode() + b'\\0' + data).hexdigest()
+    job_id = 'ingest-' + digest
     job = queue.enqueue(ingest_file, tenant_id, filename, data,
+                        job_id=job_id,
                         job_timeout=600, result_ttl=3600, failure_ttl=86400,
                         retry=Retry(max=3, interval=[10, 30, 90]))
     return job.id
