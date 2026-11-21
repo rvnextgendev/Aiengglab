@@ -6,6 +6,7 @@ from app.persistent_rag import ingest, search
 from app.rag_service import answer_question
 from app.advanced_rag.jobs import enqueue_document, job_status
 from app.advanced_rag.retrieval import hybrid_search
+from app.advanced_rag.answer import hybrid_answer
 from app.advanced_rag.extract import MAX_BYTES
 
 router = APIRouter(prefix="/rag", tags=["Persistent RAG"])
@@ -98,3 +99,16 @@ def get_job(job_id: str, principal: Principal = Depends(current_principal)):
     if result is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return result
+
+class HybridAnswerRequest(HybridRequest):
+    use_llm: bool = True
+
+@router.post("/hybrid-answer")
+def answer_hybrid(payload: HybridAnswerRequest, principal: Principal = Depends(current_principal)):
+    try:
+        return hybrid_answer(principal.tenant_id, payload.question,
+                             payload.limit, payload.rerank, payload.use_llm)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Hybrid answer unavailable") from exc
