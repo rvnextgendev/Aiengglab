@@ -23,7 +23,7 @@ def rerank(question: str, hits: list[dict], limit: int) -> list[dict]:
     if not hits:
         return []
     scores = reranker().predict([(question, hit["text"]) for hit in hits])
-    return [{**hit, "score": float(score)} for hit, score in
+    return [{**hit, "rerank_score": float(score)} for hit, score in
             sorted(zip(hits, scores), key=lambda item: float(item[1]), reverse=True)[:limit]]
 
 def hybrid_search(tenant_id: str, question: str, limit: int = 3,
