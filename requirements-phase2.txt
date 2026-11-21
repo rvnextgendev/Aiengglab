@@ -1,0 +1,5 @@
+-r requirements-foundation.txt
+pypdf>=5,<7
+redis>=5,<7
+rq>=2,<3
+python-multipart>=0.0.18,<1
