@@ -33,3 +33,17 @@ def evaluate_cases(cases: list[dict], search_fn, k: int = 3) -> dict:
             "mean_recall_at_k": round(mean(r["recall_at_k"] for r in rows), 4),
             "hit_rate_at_k": round(mean(float(r["hit_at_k"]) for r in rows), 4),
             "details": rows}
+
+def evaluate_dataset(cases: list[dict]) -> dict:
+    """Evaluate citation format and basic injection flags using labeled examples."""
+    from app.ai_quality.sprint3 import evaluate, scan_evidence
+    if not cases:
+        raise ValueError("At least one case required")
+    matched = 0
+    flagged = 0
+    for case in cases:
+        result = evaluate(case["answer"], case["hits"])
+        matched += int(result["passed"] == case["expected_citation_pass"])
+        flagged += int(not scan_evidence(case["hits"])["safe"])
+    return {"cases":len(cases),"citation_test_accuracy":round(matched/len(cases),3),
+            "injection_flagged_cases":flagged}
