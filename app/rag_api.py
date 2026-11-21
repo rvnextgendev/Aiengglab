@@ -139,6 +139,7 @@ def run_ai_workflow(payload: WorkflowRequest,
 
 class ApprovalDecision(BaseModel):
     approved: bool
+    reason: str = Field(default="", max_length=1000)
 
 @router.post("/workflows", status_code=201)
 def start_persistent_workflow(payload: WorkflowRequest,
@@ -267,3 +268,23 @@ def answer_with_quality_gate(payload: WorkflowRequest,
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Quality-gated answer unavailable") from exc
+
+@router.get("/approval-queue")
+def approval_queue(principal: Principal = Depends(require_roles("admin", "editor"))):
+    from app.ai_workflows import approval_store
+    try:
+        return {"items": approval_store.pending(principal.tenant_id)}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Approval queue unavailable") from exc
+
+@router.get("/workflows/{thread_id}/approval-history")
+def workflow_approval_history(thread_id: str,
+                              principal: Principal = Depends(current_principal)):
+    from app.ai_workflows import approval_store
+    try:
+        durable.status(thread_id, principal)
+        return {"events": approval_store.history(thread_id, principal.tenant_id)}
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Approval history unavailable") from exc
