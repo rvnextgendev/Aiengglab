@@ -9,6 +9,7 @@ from app.advanced_rag.retrieval import hybrid_search
 from app.advanced_rag.answer import hybrid_answer
 from app.advanced_rag.extract import MAX_BYTES
 from app.ai_workflows.graph import run_workflow
+from app.ai_workflows import durable
 
 router = APIRouter(prefix="/rag", tags=["Persistent RAG"])
 
@@ -131,3 +132,41 @@ def run_ai_workflow(payload: WorkflowRequest,
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="AI workflow unavailable") from exc
+
+class ApprovalDecision(BaseModel):
+    approved: bool
+
+@router.post("/workflows", status_code=201)
+def start_persistent_workflow(payload: WorkflowRequest,
+                              principal: Principal = Depends(current_principal)):
+    try:
+        return durable.start(principal, payload.question, payload.provider,
+                             payload.model, payload.use_llm, payload.rerank, payload.limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Persistent workflow unavailable") from exc
+
+@router.get("/workflows/{thread_id}")
+def get_persistent_workflow(thread_id: str,
+                            principal: Principal = Depends(current_principal)):
+    try:
+        return durable.status(thread_id, principal)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Persistent workflow unavailable") from exc
+
+@router.post("/workflows/{thread_id}/approval")
+def approve_persistent_workflow(thread_id: str, payload: ApprovalDecision,
+                                principal: Principal = Depends(require_roles("admin", "editor"))):
+    try:
+        return durable.decide(thread_id, principal, payload.approved)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Reviewer role required") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Persistent workflow unavailable") from exc
