@@ -1,7 +1,7 @@
 """Redis RQ jobs. Queue payload is limited to 5 MB; protect Redis as sensitive storage."""
 import os
 from redis import Redis
-from rq import Queue
+from rq import Queue, Retry
 from rq.job import Job
 from app.advanced_rag.ingestion import ingest_file
 
@@ -12,7 +12,8 @@ def connection():
 def enqueue_document(tenant_id: str, filename: str, data: bytes) -> str:
     queue = Queue("arinova-ingestion", connection=connection(), default_timeout=600)
     job = queue.enqueue(ingest_file, tenant_id, filename, data,
-                        job_timeout=600, result_ttl=3600, failure_ttl=86400)
+                        job_timeout=600, result_ttl=3600, failure_ttl=86400,
+                        retry=Retry(max=3, interval=[10, 30, 90]))
     return job.id
 
 def job_status(tenant_id: str, job_id: str) -> dict | None:
@@ -24,4 +25,5 @@ def job_status(tenant_id: str, job_id: str) -> dict | None:
     status = job.get_status(refresh=True)
     status_value = getattr(status, "value", str(status))
     return {"job_id": job.id, "status": status_value,
+            "failed": status_value == "failed",
             "result": job.result if status_value == "finished" else None}
