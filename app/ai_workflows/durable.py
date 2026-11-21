@@ -15,6 +15,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
 from langgraph.checkpoint.sqlite import SqliteSaver
 from app.ai_workflows.graph import validate, retrieve, answer, abstain, ABSTAIN
+from app.reliability import workflow_control as control
+from app.reliability.deadline import deadline, check, OperationCancelled
 
 class DurableState(TypedDict, total=False):
     question: str
@@ -31,8 +33,12 @@ class DurableState(TypedDict, total=False):
     trace: list[str]
     approved: bool
     reviewer_id: str
+    thread_id: str
 
 def approval(state: DurableState) -> dict:
+    check()
+    if control.is_cancelled(state['thread_id']):
+        raise OperationCancelled('Workflow cancelled')
     # interrupt() persists the current graph state and returns on resume.
     decision = interrupt({
         "kind": "llm_answer_approval",
@@ -100,6 +106,7 @@ def view(snapshot) -> dict:
         "sources": state.get("sources", []),
         "trace": state.get("trace", []),
         "reviewer_id": state.get("reviewer_id"),
+        "cancel_requested": control.is_cancelled(snapshot.config["configurable"]["thread_id"]),
     }
 
 def start(principal, question: str, provider: str = "ollama",
@@ -110,11 +117,14 @@ def start(principal, question: str, provider: str = "ollama",
     if model is not None and (not model.strip() or len(model) > 120):
         raise ValueError("Invalid model")
     thread_id = uuid4().hex
-    initial = {"tenant_id": principal.tenant_id, "user_id": principal.user_id,
+    control.register(thread_id, principal.tenant_id, principal.user_id)
+    initial = {"thread_id": thread_id, "tenant_id": principal.tenant_id, "user_id": principal.user_id,
                "role": principal.role, "question": question, "provider": provider,
                "model": model, "use_llm": use_llm, "rerank": rerank, "limit": limit}
     with open_graph() as graph:
-        graph.invoke(initial, config(thread_id))
+        with deadline(float(os.getenv('WORKFLOW_DEADLINE_SECONDS', '120')),
+                      cancelled=lambda: control.is_cancelled(thread_id)):
+            graph.invoke(initial, config(thread_id))
         return view(graph.get_state(config(thread_id)))
 
 def get_owned_snapshot(graph, thread_id: str, principal, *, reviewer=False):
@@ -140,8 +150,32 @@ def decide(thread_id: str, principal, approved: bool) -> dict:
         raise ValueError("approved must be boolean")
     with open_graph() as graph:
         snapshot = get_owned_snapshot(graph, thread_id, principal, reviewer=True)
+        if control.is_cancelled(thread_id):
+            raise ValueError('Workflow cancellation requested')
         if "approval" not in snapshot.next:
             raise ValueError("Workflow is not awaiting approval")
-        graph.invoke(Command(resume={"approved": approved, "reviewer_id": principal.user_id}),
-                     config(thread_id))
+        with deadline(float(os.getenv("WORKFLOW_DEADLINE_SECONDS", "120")),
+                      cancelled=lambda: control.is_cancelled(thread_id)):
+            graph.invoke(Command(resume={"approved": approved, "reviewer_id": principal.user_id}),
+                         config(thread_id))
         return view(graph.get_state(config(thread_id)))
+
+def cancel(thread_id: str, principal) -> dict:
+    with open_graph() as graph:
+        get_owned_snapshot(graph, thread_id, principal)
+    return control.cancel(thread_id, principal.tenant_id, principal.user_id,
+                          is_admin=principal.role == "admin")
+
+def recovery_inventory(principal) -> list[dict]:
+    """Read-only recovery inventory: does not auto-resume approvals or LLM calls."""
+    if principal.role != "admin":
+        raise PermissionError("Admin required")
+    results = []
+    for entry in control.inventory(principal.tenant_id):
+        try:
+            with open_graph() as graph:
+                snapshot = get_owned_snapshot(graph, entry["thread_id"], principal)
+                results.append({**entry, "workflow_status": view(snapshot)["status"]})
+        except (LookupError, ValueError):
+            results.append({**entry, "workflow_status": "checkpoint_missing"})
+    return results
