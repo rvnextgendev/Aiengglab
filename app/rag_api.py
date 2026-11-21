@@ -199,6 +199,14 @@ def approve_persistent_workflow(thread_id: str, payload: ApprovalDecision,
             if not existing["new"]:
                 if existing["status"] == "completed":
                     return existing["result"]
+                try:
+                    recovered = durable.status(thread_id, principal)
+                except LookupError:
+                    raise HTTPException(status_code=409, detail="Approval checkpoint unavailable")
+                if recovered["status"] == "completed":
+                    complete(principal.tenant_id, principal.user_id, "approve:" + thread_id,
+                             idempotency_key, recovered)
+                    return recovered
                 raise HTTPException(status_code=409, detail="Approval pending reconciliation")
         result = durable.decide(thread_id, principal, payload.approved)
         if idempotency_key:
