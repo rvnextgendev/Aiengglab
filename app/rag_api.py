@@ -300,3 +300,43 @@ def usage_summary(principal: Principal = Depends(require_roles("admin"))):
                 "token_count_note": "Estimated from characters, not actual billing"}
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Usage monitoring unavailable") from exc
+
+class WorkflowFeedbackRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(default="", max_length=500)
+
+@router.post("/workflows/{thread_id}/feedback")
+def submit_workflow_feedback(thread_id: str, payload: WorkflowFeedbackRequest,
+                             principal: Principal = Depends(current_principal)):
+    """Accept feedback only for a completed workflow owned by the caller or admin."""
+    from app.ai_workflows import feedback
+    try:
+        workflow = durable.status(thread_id, principal)
+        if workflow["status"] != "completed":
+            raise HTTPException(status_code=409, detail="Workflow not completed")
+        return feedback.submit(thread_id, principal.tenant_id, principal.user_id,
+                               payload.rating, payload.comment)
+    except HTTPException:
+        raise
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Feedback unavailable") from exc
+
+@router.get("/workflows/{thread_id}/feedback")
+def get_workflow_feedback(thread_id: str,
+                          principal: Principal = Depends(require_roles("admin", "editor"))):
+    from app.ai_workflows import feedback
+    try:
+        durable.status(thread_id, principal) if principal.role == "admin" else _verify_reviewer_workflow(thread_id, principal)
+        return {"items": feedback.list_for_workflow(thread_id, principal.tenant_id)}
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Feedback unavailable") from exc
+
+def _verify_reviewer_workflow(thread_id: str, principal: Principal):
+    with durable.open_graph() as graph:
+        durable.get_owned_snapshot(graph, thread_id, principal, reviewer=True)
