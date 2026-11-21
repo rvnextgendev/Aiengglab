@@ -49,6 +49,33 @@ with docs:
             st.json(result['sources'])
         except requests.RequestException as exc:
             st.error(str(exc))
+with docs:
+    st.divider()
+    st.subheader('Phase 2 — PDF and hybrid retrieval')
+    pdf_upload = st.file_uploader('Upload PDF/TXT for background ingestion', type=['pdf', 'txt'], key='phase2_upload')
+    if pdf_upload and st.button('Queue document'):
+        try:
+            st.json(call('POST', '/rag/upload', files={'file': (pdf_upload.name, pdf_upload.getvalue())}))
+        except requests.RequestException as exc:
+            st.error(str(exc))
+    job_id = st.text_input('Ingestion job ID')
+    if job_id and st.button('Check job status'):
+        try:
+            st.json(call('GET', '/rag/jobs/' + job_id))
+        except requests.RequestException as exc:
+            st.error(str(exc))
+    hybrid_question = st.text_input('Hybrid RAG question', key='hybrid_question')
+    rerank_enabled = st.checkbox('Use local cross-encoder reranker', value=False)
+    hybrid_llm = st.checkbox('Generate with Ollama (hybrid)', value=False)
+    if st.button('Ask hybrid RAG'):
+        try:
+            result = call('POST', '/rag/hybrid-answer', json={
+                'question': hybrid_question, 'rerank': rerank_enabled,
+                'use_llm': hybrid_llm, 'limit': 3})
+            st.write(result['answer'])
+            st.json(result['sources'])
+        except requests.RequestException as exc:
+            st.error(str(exc))
 with evals:
     if st.button('Run evaluation suite'):
         try:
