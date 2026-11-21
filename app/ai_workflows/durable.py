@@ -115,12 +115,15 @@ def view(snapshot) -> dict:
 
 def start(principal, question: str, provider: str = "ollama",
           model: str | None = None, use_llm: bool = True,
-          rerank: bool = False, limit: int = 3) -> dict:
+          rerank: bool = False, limit: int = 3,
+          thread_id: str | None = None) -> dict:
     if provider not in {"ollama", "openai-compatible"}:
         raise ValueError("Unsupported provider")
     if model is not None and (not model.strip() or len(model) > 120):
         raise ValueError("Invalid model")
-    thread_id = uuid4().hex
+    thread_id = thread_id or uuid4().hex
+    if not re.fullmatch(r"[0-9a-f]{32}", thread_id):
+        raise ValueError("Invalid workflow ID")
     control.register(thread_id, principal.tenant_id, principal.user_id)
     initial = {"thread_id": thread_id, "tenant_id": principal.tenant_id, "user_id": principal.user_id,
                "role": principal.role, "question": question, "provider": provider,
