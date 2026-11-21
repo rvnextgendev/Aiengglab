@@ -99,15 +99,18 @@ def config(thread_id: str) -> dict:
 def view(snapshot) -> dict:
     state = snapshot.values
     waiting = bool(snapshot.next) and "approval" in snapshot.next
+    cancelled = control.is_cancelled(snapshot.config["configurable"]["thread_id"])
     return {
         "thread_id": snapshot.config["configurable"]["thread_id"],
-        "status": "waiting_approval" if waiting else ("completed" if not snapshot.next else "running"),
+        "status": ("cancelled" if cancelled and snapshot.next else
+                   "waiting_approval" if waiting else
+                   "completed" if not snapshot.next else "running"),
         "question": state.get("question"),
         "answer": state.get("answer"),
         "sources": state.get("sources", []),
         "trace": state.get("trace", []),
         "reviewer_id": state.get("reviewer_id"),
-        "cancel_requested": control.is_cancelled(snapshot.config["configurable"]["thread_id"]),
+        "cancel_requested": cancelled,
     }
 
 def start(principal, question: str, provider: str = "ollama",
@@ -163,7 +166,9 @@ def decide(thread_id: str, principal, approved: bool) -> dict:
 
 def cancel(thread_id: str, principal) -> dict:
     with workflow_lock(thread_id), open_graph() as graph:
-        get_owned_snapshot(graph, thread_id, principal)
+        snapshot = get_owned_snapshot(graph, thread_id, principal)
+        if not snapshot.next:
+            raise ValueError("Workflow already completed")
         return control.cancel(thread_id, principal.tenant_id, principal.user_id,
                               is_admin=principal.role == "admin")
 
