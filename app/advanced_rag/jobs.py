@@ -4,6 +4,7 @@ from redis import Redis
 from rq import Queue, Retry
 from rq.job import Job
 from app.advanced_rag.ingestion import ingest_file
+from app.reliability.ingestion_dedupe import reserve_upload
 
 def connection():
     return Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
@@ -12,7 +13,11 @@ def connection():
 def enqueue_document(tenant_id: str, filename: str, data: bytes) -> str:
     redis = connection()
     queue = Queue("arinova-ingestion", connection=redis, default_timeout=600)
+    job_id, is_new = reserve_upload(redis, tenant_id, filename, data)
+    if not is_new:
+        return job_id
     job = queue.enqueue(ingest_file, tenant_id, filename, data,
+                        job_id=job_id,
                         job_timeout=600, result_ttl=3600, failure_ttl=86400,
                         retry=Retry(max=3, interval=[10, 30, 90]))
     return job.id
