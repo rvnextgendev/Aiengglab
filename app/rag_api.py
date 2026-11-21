@@ -177,9 +177,25 @@ def get_persistent_workflow(thread_id: str,
 
 @router.post("/workflows/{thread_id}/approval")
 def approve_persistent_workflow(thread_id: str, payload: ApprovalDecision,
-                                principal: Principal = Depends(require_roles("admin", "editor"))):
+                                principal: Principal = Depends(require_roles("admin", "editor")),
+                                idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")):
     try:
-        return durable.decide(thread_id, principal, payload.approved)
+        if idempotency_key:
+            existing = claim(principal.tenant_id, principal.user_id, "approve:" + thread_id,
+                             idempotency_key, payload.model_dump())
+            if not existing["new"]:
+                if existing["status"] == "completed":
+                    return existing["result"]
+                raise HTTPException(status_code=409, detail="Approval pending reconciliation")
+        result = durable.decide(thread_id, principal, payload.approved)
+        if idempotency_key:
+            complete(principal.tenant_id, principal.user_id, "approve:" + thread_id,
+                     idempotency_key, result)
+        return result
+    except HTTPException:
+        raise
+    except IdempotencyConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Workflow not found") from exc
     except PermissionError as exc:
