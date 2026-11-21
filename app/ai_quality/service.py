@@ -38,5 +38,5 @@ def quality_answer(tenant_id: str, question: str, provider: str = "ollama",
         record(tenant_id, "quality_answer", provider if use_llm else "none",
                elapsed, result["quality_status"] not in ("citation_check_failed", "untrusted_evidence_blocked"),
                len(question) + sum(len(h["text"]) for h in hits), len(result["answer"]))
-    return {"question": question, **result, "sources": hits, "latency_ms": elapsed,
+    return {"question": question, **result, "sources": safe_evidence(hits), "latency_ms": elapsed,
             "evidence_scan": scan}
