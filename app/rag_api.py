@@ -212,6 +212,8 @@ def cancel_persistent_workflow(thread_id: str,
         return durable.cancel(thread_id, principal)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Cancellation unavailable") from exc
 
