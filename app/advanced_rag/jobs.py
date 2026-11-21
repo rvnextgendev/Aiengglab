@@ -1,0 +1,26 @@
+"""Redis RQ jobs. Queue payload is limited to 5 MB; protect Redis as sensitive storage."""
+import os
+from redis import Redis
+from rq import Queue
+from rq.job import Job
+from app.advanced_rag.ingestion import ingest_file
+
+def connection():
+    return Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+                          socket_connect_timeout=3, socket_timeout=10)
+
+def enqueue_document(tenant_id: str, filename: str, data: bytes) -> str:
+    queue = Queue("arinova-ingestion", connection=connection(), default_timeout=600)
+    job = queue.enqueue(ingest_file, tenant_id, filename, data,
+                        job_timeout=600, result_ttl=3600, failure_ttl=86400)
+    return job.id
+
+def job_status(tenant_id: str, job_id: str) -> dict | None:
+    job = Job.fetch(job_id, connection=connection())
+    # RQ job arguments are trusted only because enqueue is authenticated and
+    # the queue is private. Never expose job arguments to the client.
+    if not job.args or job.args[0] != tenant_id:
+        return None
+    status = job.get_status(refresh=True)
+    return {"job_id": job.id, "status": str(status),
+            "result": job.result if status == "finished" else None}
