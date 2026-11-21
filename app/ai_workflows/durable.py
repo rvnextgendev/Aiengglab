@@ -88,6 +88,11 @@ def build_durable_graph(checkpointer):
 
 @contextmanager
 def open_graph():
+    if os.getenv("WORKFLOW_CHECKPOINTER", "sqlite").lower() == "postgres":
+        from app.ai_workflows.postgres_store import open_postgres_saver
+        with open_postgres_saver() as saver:
+            yield build_durable_graph(saver)
+        return
     path = Path(os.environ.get("WORKFLOW_SQLITE_PATH", ".data/workflows.sqlite"))
     path.parent.mkdir(parents=True, exist_ok=True)
     with SqliteSaver.from_conn_string(str(path)) as saver:
