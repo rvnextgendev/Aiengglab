@@ -29,6 +29,7 @@ class RagChunk(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("rag_documents.id", ondelete="CASCADE"))
     chunk_index: Mapped[int] = mapped_column(Integer)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     content: Mapped[str] = mapped_column(Text)
     embedding: Mapped[list[float]] = mapped_column(VECTOR(EMBED_DIM))
     document: Mapped[RagDocument] = relationship(back_populates="chunks")
