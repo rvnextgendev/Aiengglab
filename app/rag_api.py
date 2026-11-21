@@ -11,7 +11,8 @@ from app.advanced_rag.extract import MAX_BYTES
 from app.ai_workflows.graph import run_workflow
 from app.ai_workflows import durable
 from app.ai_quality.service import quality_answer
-from app.reliability.idempotency import claim, complete, IdempotencyConflict
+from app.reliability.idempotency import claim, complete, associate, IdempotencyConflict
+from uuid import uuid4
 from app.reliability import dead_letter
 
 router = APIRouter(prefix="/rag", tags=["Persistent RAG"])
@@ -150,9 +151,21 @@ def start_persistent_workflow(payload: WorkflowRequest,
             if not existing["new"]:
                 if existing["status"] == "completed":
                     return existing["result"]
-                raise HTTPException(status_code=409, detail="Request is already pending; reconcile before retry")
+                if existing["result"] and existing["result"].get("thread_id"):
+                    try:
+                        recovered = durable.status(existing["result"]["thread_id"], principal)
+                    except LookupError:
+                        raise HTTPException(status_code=409, detail="Workflow checkpoint not yet available")
+                    complete(principal.tenant_id, principal.user_id, "start_workflow", idempotency_key, recovered)
+                    return recovered
+                raise HTTPException(status_code=409, detail="Request is pending reconciliation")
+        reserved_thread_id = uuid4().hex if idempotency_key else None
+        if idempotency_key:
+            associate(principal.tenant_id, principal.user_id, "start_workflow",
+                      idempotency_key, {"thread_id": reserved_thread_id})
         result = durable.start(principal, payload.question, payload.provider,
-                               payload.model, payload.use_llm, payload.rerank, payload.limit)
+                               payload.model, payload.use_llm, payload.rerank, payload.limit,
+                               thread_id=reserved_thread_id)
         if idempotency_key:
             complete(principal.tenant_id, principal.user_id, "start_workflow", idempotency_key, result)
         return result
