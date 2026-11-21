@@ -8,6 +8,7 @@ from app.advanced_rag.jobs import enqueue_document, job_status
 from app.advanced_rag.retrieval import hybrid_search
 from app.advanced_rag.answer import hybrid_answer
 from app.advanced_rag.extract import MAX_BYTES
+from app.ai_workflows.graph import run_workflow
 
 router = APIRouter(prefix="/rag", tags=["Persistent RAG"])
 
@@ -112,3 +113,21 @@ def answer_hybrid(payload: HybridAnswerRequest, principal: Principal = Depends(c
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Hybrid answer unavailable") from exc
+
+class WorkflowRequest(SearchRequest):
+    provider: str = Field(default="ollama", pattern="^(ollama|openai-compatible)$")
+    model: str | None = Field(default=None, max_length=120)
+    use_llm: bool = True
+    rerank: bool = False
+
+@router.post("/workflow")
+def run_ai_workflow(payload: WorkflowRequest,
+                    principal: Principal = Depends(current_principal)):
+    try:
+        return run_workflow(principal.tenant_id, principal.role, payload.question,
+                            payload.provider, payload.model, payload.use_llm,
+                            payload.rerank, payload.limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="AI workflow unavailable") from exc
