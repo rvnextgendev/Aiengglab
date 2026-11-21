@@ -24,20 +24,24 @@ class WorkflowState(TypedDict, total=False):
     trace: list[str]
 
 def validate(state: WorkflowState) -> dict:
+    check()
     return {"question": safe_question(state["question"]), "trace": ["validated"]}
 
 def retrieve(state: WorkflowState) -> dict:
+    check()
     result = execute_tool(
         "search_documents",
         {"question": state["question"], "limit": state.get("limit", 3),
          "rerank": state.get("rerank", False)},
         ToolContext(state["tenant_id"], state["role"]))
+    check()
     return {"sources": result["sources"], "trace": state["trace"] + ["retrieved"]}
 
 def route(state: WorkflowState) -> str:
     return "answer" if state["sources"] else "abstain"
 
 def answer(state: WorkflowState) -> dict:
+    check()
     hits = state["sources"]
     if state.get("use_llm", True):
         response = generate(state["question"], hits,
@@ -45,6 +49,7 @@ def answer(state: WorkflowState) -> dict:
     else:
         response = "Relevant evidence: " + " | ".join(
             f"[{h['source']}] {h['text']}" for h in hits)
+    check()
     return {"answer": response, "trace": state["trace"] + ["answered"]}
 
 def abstain(state: WorkflowState) -> dict:
