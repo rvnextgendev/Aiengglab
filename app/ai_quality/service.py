@@ -4,6 +4,9 @@ from app.ai_workflows.providers import generate
 from app.advanced_rag.retrieval import hybrid_search
 from app.ai_quality.guardrails import validate_question, evidence_budget, apply_answer_policy
 from app.ai_quality.observability import measure
+from app.ai_quality.sprint3 import scan_evidence, safe_evidence
+from app.observability.sprint4 import record
+import os
 
 def quality_answer(tenant_id: str, question: str, provider: str = "ollama",
                    model: str | None = None, limit: int = 3,
@@ -16,15 +19,24 @@ def quality_answer(tenant_id: str, question: str, provider: str = "ollama",
         raise ValueError("Invalid limit")
     with measure("quality_retrieval"):
         hits = evidence_budget(hybrid_search(tenant_id, question, limit, rerank))
-    if not hits:
+    scan = scan_evidence(hits)
+    if not scan["safe"]:
+        result = apply_answer_policy("", [])
+        result["quality_status"] = "untrusted_evidence_blocked"
+    elif not hits:
         result = apply_answer_policy("", [])
     elif use_llm:
         with measure("quality_generation", provider=provider):
-            answer = generate(question, hits, provider, model)
+            answer = generate(question, safe_evidence(hits), provider, model)
         result = apply_answer_policy(answer, hits)
     else:
         answer = "Relevant evidence: " + " | ".join(
             f"[{hit['source']}] {hit['text']}" for hit in hits)
         result = apply_answer_policy(answer, hits)
-    return {"question": question, **result, "sources": hits,
-            "latency_ms": round((time.perf_counter() - started) * 1000, 2)}
+    elapsed = round((time.perf_counter() - started) * 1000, 2)
+    if os.getenv("AI_USAGE_METRICS", "off") == "on":
+        record(tenant_id, "quality_answer", provider if use_llm else "none",
+               elapsed, result["quality_status"] not in ("citation_check_failed", "untrusted_evidence_blocked"),
+               len(question) + sum(len(h["text"]) for h in hits), len(result["answer"]))
+    return {"question": question, **result, "sources": hits, "latency_ms": elapsed,
+            "evidence_scan": scan}
