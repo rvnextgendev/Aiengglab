@@ -170,6 +170,9 @@ def decide(thread_id: str, principal, approved: bool) -> dict:
             raise ValueError('Workflow cancellation requested')
         if "approval" not in snapshot.next:
             raise ValueError("Workflow is not awaiting approval")
+        if os.getenv("WORKFLOW_APPROVAL_STORE", "off") == "postgres":
+            from app.ai_workflows import approval_store
+            approval_store.ensure_pending(thread_id, principal.tenant_id)
         with deadline(float(os.getenv("WORKFLOW_DEADLINE_SECONDS", "120")),
                       cancelled=lambda: control.is_cancelled(thread_id)):
             graph.invoke(Command(resume={"approved": approved, "reviewer_id": principal.user_id}),
