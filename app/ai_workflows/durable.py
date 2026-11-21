@@ -16,6 +16,7 @@ from langgraph.types import Command, interrupt
 from langgraph.checkpoint.sqlite import SqliteSaver
 from app.ai_workflows.graph import validate, retrieve, abstain, ABSTAIN
 from app.ai_workflows.integrated import answer_with_evaluation, approval_preview
+from app.ai_quality.sprint3 import safe_evidence
 from app.reliability import workflow_control as control
 from app.reliability.deadline import deadline, check, OperationCancelled
 from app.reliability.locks import workflow_lock
@@ -116,7 +117,7 @@ def view(snapshot) -> dict:
         "answer": state.get("answer"),
         "quality_status": state.get("quality_status"),
         "citation_check": state.get("citation_check"),
-        "sources": state.get("sources", []),
+        "sources": safe_evidence(state.get("sources", [])),
         "trace": state.get("trace", []),
         "reviewer_id": state.get("reviewer_id"),
         "cancel_requested": cancelled,
