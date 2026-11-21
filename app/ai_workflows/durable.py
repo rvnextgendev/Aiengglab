@@ -17,6 +17,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from app.ai_workflows.graph import validate, retrieve, answer, abstain, ABSTAIN
 from app.reliability import workflow_control as control
 from app.reliability.deadline import deadline, check, OperationCancelled
+from app.reliability.locks import workflow_lock
 
 class DurableState(TypedDict, total=False):
     question: str
@@ -148,7 +149,7 @@ def status(thread_id: str, principal) -> dict:
 def decide(thread_id: str, principal, approved: bool) -> dict:
     if type(approved) is not bool:
         raise ValueError("approved must be boolean")
-    with open_graph() as graph:
+    with workflow_lock(thread_id), open_graph() as graph:
         snapshot = get_owned_snapshot(graph, thread_id, principal, reviewer=True)
         if control.is_cancelled(thread_id):
             raise ValueError('Workflow cancellation requested')
@@ -161,10 +162,10 @@ def decide(thread_id: str, principal, approved: bool) -> dict:
         return view(graph.get_state(config(thread_id)))
 
 def cancel(thread_id: str, principal) -> dict:
-    with open_graph() as graph:
+    with workflow_lock(thread_id), open_graph() as graph:
         get_owned_snapshot(graph, thread_id, principal)
-    return control.cancel(thread_id, principal.tenant_id, principal.user_id,
-                          is_admin=principal.role == "admin")
+        return control.cancel(thread_id, principal.tenant_id, principal.user_id,
+                              is_admin=principal.role == "admin")
 
 def recovery_inventory(principal) -> list[dict]:
     """Read-only recovery inventory: does not auto-resume approvals or LLM calls."""
