@@ -115,6 +115,18 @@ with docs:
                              json={'approved': False}))
             except requests.RequestException as exc:
                 st.error(str(exc))
+with docs:
+    st.divider()
+    st.subheader('Phase 4 — Quality-gated answer')
+    quality_question = st.text_input('Question to evaluate', 'What is the return policy?', key='quality_question')
+    quality_llm = st.checkbox('Use LLM for quality-gated answer', value=False, key='quality_llm')
+    if st.button('Run citation-checked answer'):
+        try:
+            st.json(call('POST', '/rag/quality-answer', json={
+                'question': quality_question, 'provider': 'ollama',
+                'use_llm': quality_llm, 'rerank': False, 'limit': 3}))
+        except requests.RequestException as exc:
+            st.error(str(exc))
 with evals:
     if st.button('Run evaluation suite'):
         try:
