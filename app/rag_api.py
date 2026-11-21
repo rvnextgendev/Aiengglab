@@ -10,6 +10,7 @@ from app.advanced_rag.answer import hybrid_answer
 from app.advanced_rag.extract import MAX_BYTES
 from app.ai_workflows.graph import run_workflow
 from app.ai_workflows import durable
+from app.ai_quality.service import quality_answer
 
 router = APIRouter(prefix="/rag", tags=["Persistent RAG"])
 
@@ -170,3 +171,15 @@ def approve_persistent_workflow(thread_id: str, payload: ApprovalDecision,
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Persistent workflow unavailable") from exc
+
+@router.post("/quality-answer")
+def answer_with_quality_gate(payload: WorkflowRequest,
+                             principal: Principal = Depends(current_principal)):
+    try:
+        return quality_answer(principal.tenant_id, payload.question,
+                              payload.provider, payload.model, payload.limit,
+                              payload.rerank, payload.use_llm)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Quality-gated answer unavailable") from exc
