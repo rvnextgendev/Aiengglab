@@ -288,3 +288,15 @@ def workflow_approval_history(thread_id: str,
         raise HTTPException(status_code=404, detail="Workflow not found") from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Approval history unavailable") from exc
+
+@router.get("/usage-summary")
+def usage_summary(principal: Principal = Depends(require_roles("admin"))):
+    """Prototype monitoring: scoped to authenticated tenant, no user-supplied tenant ID."""
+    from app.observability.sprint4 import summary
+    from app.observability.costs import alerts
+    try:
+        rows = summary(principal.tenant_id)
+        return {"providers": rows, "alerts": alerts(rows),
+                "token_count_note": "Estimated from characters, not actual billing"}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Usage monitoring unavailable") from exc
