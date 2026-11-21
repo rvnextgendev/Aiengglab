@@ -14,7 +14,8 @@ from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
 from langgraph.checkpoint.sqlite import SqliteSaver
-from app.ai_workflows.graph import validate, retrieve, answer, abstain, ABSTAIN
+from app.ai_workflows.graph import validate, retrieve, abstain, ABSTAIN
+from app.ai_workflows.integrated import answer_with_evaluation, approval_preview
 from app.reliability import workflow_control as control
 from app.reliability.deadline import deadline, check, OperationCancelled
 from app.reliability.locks import workflow_lock
@@ -31,6 +32,8 @@ class DurableState(TypedDict, total=False):
     limit: int
     sources: list[dict]
     answer: str
+    quality_status: str
+    citation_check: dict
     trace: list[str]
     approved: bool
     reviewer_id: str
@@ -44,8 +47,7 @@ def approval(state: DurableState) -> dict:
     decision = interrupt({
         "kind": "llm_answer_approval",
         "question": state["question"],
-        "sources": [{"source": h["source"], "excerpt": h["text"][:300]}
-                    for h in state.get("sources", [])[:10]],
+        "sources": approval_preview(state),
         "message": "Approve sending retrieved evidence to the selected LLM provider?"
     })
     if not isinstance(decision, dict) or type(decision.get("approved")) is not bool:
@@ -73,7 +75,7 @@ def rejected(state: DurableState) -> dict:
 def build_durable_graph(checkpointer):
     builder = StateGraph(DurableState)
     for name, fn in [("validate", validate), ("retrieve", retrieve),
-                     ("approval", approval), ("answer", answer),
+                     ("approval", approval), ("answer", answer_with_evaluation),
                      ("abstain", abstain), ("rejected", rejected)]:
         builder.add_node(name, fn)
     builder.add_edge(START, "validate")
@@ -112,6 +114,8 @@ def view(snapshot) -> dict:
                    "completed" if not snapshot.next else "running"),
         "question": state.get("question"),
         "answer": state.get("answer"),
+        "quality_status": state.get("quality_status"),
+        "citation_check": state.get("citation_check"),
         "sources": state.get("sources", []),
         "trace": state.get("trace", []),
         "reviewer_id": state.get("reviewer_id"),
