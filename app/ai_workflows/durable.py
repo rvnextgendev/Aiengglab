@@ -137,7 +137,11 @@ def start(principal, question: str, provider: str = "ollama",
         with deadline(float(os.getenv('WORKFLOW_DEADLINE_SECONDS', '120')),
                       cancelled=lambda: control.is_cancelled(thread_id)):
             graph.invoke(initial, config(thread_id))
-        return view(graph.get_state(config(thread_id)))
+        result = view(graph.get_state(config(thread_id)))
+        if result["status"] == "waiting_approval" and os.getenv("WORKFLOW_APPROVAL_STORE", "off") == "postgres":
+            from app.ai_workflows import approval_store
+            approval_store.register(thread_id, principal.tenant_id, principal.user_id)
+        return result
 
 def get_owned_snapshot(graph, thread_id: str, principal, *, reviewer=False):
     if not re.fullmatch(r"[0-9a-f]{32}", thread_id):
@@ -170,7 +174,11 @@ def decide(thread_id: str, principal, approved: bool) -> dict:
                       cancelled=lambda: control.is_cancelled(thread_id)):
             graph.invoke(Command(resume={"approved": approved, "reviewer_id": principal.user_id}),
                          config(thread_id))
-        return view(graph.get_state(config(thread_id)))
+        result = view(graph.get_state(config(thread_id)))
+        if os.getenv("WORKFLOW_APPROVAL_STORE", "off") == "postgres":
+            from app.ai_workflows import approval_store
+            approval_store.decision(thread_id, principal.tenant_id, principal.user_id, approved)
+        return result
 
 def cancel(thread_id: str, principal) -> dict:
     with workflow_lock(thread_id), open_graph() as graph:
