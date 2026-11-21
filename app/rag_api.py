@@ -12,6 +12,7 @@ from app.ai_workflows.graph import run_workflow
 from app.ai_workflows import durable
 from app.ai_quality.service import quality_answer
 from app.reliability.idempotency import claim, complete, IdempotencyConflict
+from app.reliability import dead_letter
 
 router = APIRouter(prefix="/rag", tags=["Persistent RAG"])
 
@@ -187,6 +188,34 @@ def approve_persistent_workflow(thread_id: str, payload: ApprovalDecision,
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Persistent workflow unavailable") from exc
+
+@router.post("/workflows/{thread_id}/cancel")
+def cancel_persistent_workflow(thread_id: str,
+                              principal: Principal = Depends(current_principal)):
+    try:
+        return durable.cancel(thread_id, principal)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Workflow not found") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Cancellation unavailable") from exc
+
+@router.get("/workflows-recovery")
+def list_workflows_for_recovery(principal: Principal = Depends(require_roles("admin"))):
+    return {"workflows": durable.recovery_inventory(principal)}
+
+@router.get("/failed-jobs")
+def list_failed_jobs(principal: Principal = Depends(require_roles("admin"))):
+    return {"jobs": dead_letter.failed_jobs(principal.tenant_id)}
+
+@router.post("/failed-jobs/{job_id}/replay", status_code=202)
+def replay_failed_job(job_id: str,
+                      principal: Principal = Depends(require_roles("admin"))):
+    try:
+        return dead_letter.replay(principal.tenant_id, job_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="Failed job not found") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Failed-job replay unavailable") from exc
 
 @router.post("/quality-answer")
 def answer_with_quality_gate(payload: WorkflowRequest,
